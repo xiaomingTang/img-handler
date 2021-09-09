@@ -1,10 +1,18 @@
 from typing import List, Tuple, TypeVar, Any
 from PIL import Image, ExifTags
 from tangUtils.main import Base, File, question, questionInt, Cmd, runCmdList, getInputFiles
-import math, time, random, re
+import math, time, random, re, pathlib
 
 Size = Tuple[int, int]
 Box = Tuple[int, int, int, int]
+
+def processPrinter(i: int, total: int):
+  log = math.log(total, 10)
+  ceilLog = math.ceil(log)
+  if ceilLog - log > 0 and ceilLog - log < 0.00000001:
+    ceilLog += 1
+  tempStr = "处理中: %%%dd / %%%dd" % (ceilLog, ceilLog)
+  print(tempStr % (i, total), end="\r")
 
 def openWithRotateFromExif(path):
   image = Image.open(path)
@@ -12,7 +20,7 @@ def openWithRotateFromExif(path):
     for orientation in ExifTags.TAGS.keys():
       if ExifTags.TAGS[orientation] == 'Orientation':
         break
-    
+
     exif = image._getexif()
 
     if exif[orientation] == 3:
@@ -21,7 +29,7 @@ def openWithRotateFromExif(path):
       image = image.rotate(270, expand=True)
     elif exif[orientation] == 8:
       image = image.rotate(90, expand=True)
-  except (AttributeError, KeyError, IndexError):
+  except Exception as e:
     # cases: image don't have getexif
     pass
   return image
@@ -52,8 +60,9 @@ def mergeFallingHorizon(paths: List[str], rows: int = 1, height: int = 512):
   imgs = [openWithRotateFromExif(p) for p in paths]
   base = geneJpg((1, 1))
   sides = [n - n for n in range(rows)]
-  print(sides)
-  for im in imgs:
+  total = len(imgs)
+  for idx, im in enumerate(imgs):
+    processPrinter(idx, total)
     newSize = withinSize(im.size, (-1, height))
     minSide = min(sides)
     col = sides.index(minSide)
@@ -67,7 +76,9 @@ def mergeFallingVertical(paths: List[str], cols: int = 1, width: int = 512):
   imgs = [openWithRotateFromExif(p) for p in paths]
   base = geneJpg((1, 1))
   sides = [n - n for n in range(cols)]
-  for im in imgs:
+  total = len(imgs)
+  for idx, im in enumerate(imgs):
+    processPrinter(idx, total)
     newSize = withinSize(im.size, (width, -1))
     minSide = min(sides)
     row = sides.index(minSide)
@@ -88,6 +99,7 @@ def mergeHorizon(paths: List[str], rows: int = 1, height: int = 512):
     corner[1] = height * row
     for col in range(cols):
       i = row * cols + col
+      processPrinter(i, total)
       if i >= total:
         return base
       im = imgs[i]
@@ -111,6 +123,7 @@ def mergeVertical(paths: List[str], cols: int = 1, width: int = 512):
     corner[1] = 0
     for row in range(rows):
       i = col * rows + row
+      processPrinter(i, total)
       if i >= total:
         return base
       im = imgs[i]
@@ -127,6 +140,7 @@ def main():
   print("""
   --- 一个图片拼接工具 ---
   【ctrl + C】可终止程序
+  0. 注意, 最终生成的图片边长最大支持 65535
   1. 直接将多个图片或文件夹拖拽到.exe文件上就可以了
   2. 支持【%s】后缀的文件
   3. 如果图片尺寸较大/较多, 可能会有些慢, 请耐心等候
@@ -195,7 +209,12 @@ def main():
     ])
     print("图片已保存到 【%s】" % result.path)
   except Exception as e:
-    print(e)
+    print("【图片生成失败】", e)
+    try:
+      pathlib.Path.unlink(result.path)
+      print("【生成的无效图片已被删除】%s" % result.path)
+    except Exception as e:
+      print("【生成的无效图片删除失败, 请手动删除】%s" % result.path)
 
 if __name__ == "__main__":
   main()
